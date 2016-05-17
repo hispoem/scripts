@@ -1,0 +1,47 @@
+#!/usr/bin/expect
+set timeout 5
+set host [lindex $argv 0]
+set port [lindex $argv 1]
+set username [lindex $argv 2]
+set password [lindex $argv 3]
+set rootpwd [lindex $argv 4]
+set newuser [lindex $argv 5]
+
+###scp pubkey to /tmp###
+spawn scp -P$port /home/$newuser/.ssh/${newuser}_rsa.pub $username@$host:/tmp/${newuser}_rsa.pub
+expect {
+    "(yes/no)?"
+    {
+        send "yes\n"
+        expect "*assword:" { send "$password\n"}
+    }
+    "*assword:"
+    {
+        send "$password\n"
+    }
+}
+expect "100%"
+expect eof
+
+###create new account###
+spawn ssh -p$port $username@$host
+expect {
+    "(yes/no)?"
+    {
+        send "yes\n"
+        expect "*assword:" {send "$password\n"}
+    }
+    "*assword:"
+    {
+        send "$password\n"
+    }
+}
+expect "$*"
+send "su -\r"
+expect "Password:"
+send "$rootpwd\r"
+expect "#*"
+send "useradd $newuser;cd /home/$newuser;mkdir -p .ssh;chmod 700 .ssh;cd /home/$newuser/.ssh/;touch authorized_keys;chmod 600 authorized_keys;cat /tmp/${newuser}_rsa.pub >> authorized_keys;chown -R $newuser:$newuser /home/$newuser;usermod -G liter $newuser\r"
+send "exit\r"
+send "exit\r"
+expect eof

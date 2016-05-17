@@ -1,0 +1,193 @@
+#!/bin/bash
+###Relay machine###
+
+###Define the variable###
+export PATH=$PATH
+bin_dir=$(dirname $0)
+pubkey_dir=${bin_dir}/../pubkey
+data_dir=${bin_dir}/../data
+log_dir=${bin_dir}/../logs
+host_list=${data_dir}/host.list
+run_time=$(date +"%F %H:%M:%S")
+generaluser=liter
+sshport=22
+
+###Install###
+mkdir -p ${pubkey_dir}
+mkdir -p ${data_dir}
+mkdir -p ${log_dir}
+chown -R $generaluser:$generaluser ${pubkey_dir}
+chmod 700 ${bin_dir}
+chmod 700 ${pubkey_dir}
+chmod 700 ${data_dir}
+chmod 700 ${log_dir}
+if [ -f "${host_list}" ];then
+gzexe -d ${host_list} &> /dev/null
+fi
+
+###create relay host account###
+function create_relay_account()
+{
+    keyusers=$(ls ${pubkey_dir} | cut -d. -f1)
+    users=$(echo $1 | cut -d: -f1 | tr ',' ' ')
+    for ruser in $(echo $users)
+    do
+        if [ $(echo $keyusers | grep $ruser | wc -l) -eq 0 ];then
+            echo "Relay: the user $ruser have no public key, please upload public key to directory pubkey."
+            continue
+        fi
+        if [ $(ls /home/ | grep $ruser | wc -l) -eq 0 ];then
+            useradd $ruser
+            cd /home/$ruser;mkdir -p .ssh;chmod 700 .ssh
+            cd /home/$ruser/.ssh/;touch authorized_keys;chmod 600 authorized_keys
+            cat ${pubkey_dir}/${ruser}.pub >> authorized_keys
+            ssh-keygen -t rsa -b 2048 -f /home/$ruser/.ssh/${ruser}_rsa -C "${ruser}" -N "" &> /dev/null
+            mv ${ruser}_rsa id_rsa
+            chown -R ${ruser}:${ruser} /home/$ruser
+            echo "Relay: user ${ruser} creating success."
+        else
+            echo "Relay: user ${ruser} existed."
+            continue
+        fi
+
+    done
+}
+
+###create destination account###
+function create_dest_account()
+{
+    cd ${data_dir}
+    hosts=$(echo $1 | cut -d: -f2 | tr ',' ' ')
+    users=$(echo $1 | cut -d: -f1 | tr ',' ' ')
+    for host in $(echo $hosts)
+    do
+        if [ $(grep $host host.list | wc -l) -eq 0 ];then
+            echo "Dest: the host $host is not existed."
+            continue
+        else
+            ip=$(grep $host host.list | awk -F ' ' '{print $2}')
+            generalpwd=$(grep $host host.list | awk -F ' ' '{print $3}')
+            rootpwd=$(grep $host host.list | awk -F ' ' '{print $4}')
+            for duser in $(echo $users)
+            do
+                echo "########################${run_time}###########################" >> ${log_dir}/caccount.log
+                ${bin_dir}/remote_ca.exp $ip $sshport $generaluser "$generalpwd" "$rootpwd" "$duser" &>> ${log_dir}/caccount.log
+                if [ $? -eq 0 ];then
+                    echo "Dest: $duser@$host creating success."
+                    echo "$duser $host" >> account.list
+                else 
+                    echo "Dest: $duser@$host appears that some error occurred, please check the logs/caccount.log."
+                fi
+            done
+        fi
+    done
+}
+
+###delete relay host account###
+function delete_relay_account()
+{
+    ruser=$(echo $1 | cut -d: -f1)
+    userdel -r $ruser
+    if [ $? -eq 0 ];then
+        echo "Relay: the user $ruser is deleted."
+    fi
+}
+
+###delete single destination host account###
+function delete_s_dest_account()
+{
+    cd ${data_dir}
+    duser=$(echo $1 | cut -d: -f1)
+    dhost=$(echo $1 | cut -d: -f2)
+    if [ $(grep $dhost account.list | wc -l) -eq 0 ];then
+        echo "Dest: the host $dhost is not existed."
+    else
+        ip=$(grep $dhost host.list | awk -F ' ' '{print $2}')
+        generalpwd=$(grep $dhost host.list | awk -F ' ' '{print $3}')
+        rootpwd=$(grep $dhost host.list | awk -F ' ' '{print $4}')
+        echo "########################${run_time}###########################" >> ${log_dir}/daccount.log
+        ${bin_dir}/remote_da.exp $ip $sshport $generaluser "$generalpwd" "$rootpwd" "$duser" &>> ${log_dir}/daccount.log && grep -v "$duser $dhost" account.list > account.new;mv account.new account.list && echo "Dest: the user $duser@$dhost is deleted." || echo "Dest: $duser@$dhost appears that some error occurred, please check the logs/daccount.log."
+    fi
+}
+
+###delete all destination host account###
+function delete_a_dest_account()
+{
+    cd ${data_dir}
+    duser=$(echo $1)
+    dhost_list=$(grep $duser account.list | awk -F ' ' '{print $2}')
+    if [ $(grep $duser account.list | wc -l) -eq 0 ];then
+        echo "Dest: the user $duser is not existed."
+    else
+        for dhost in ${dhost_list}
+        do
+            ip=$(grep $dhost host.list | awk -F ' ' '{print $2}') 
+            generalpwd=$(grep $dhost host.list | awk -F ' ' '{print $3}')
+            rootpwd=$(grep $dhost host.list | awk -F ' ' '{print $4}')
+            echo "########################${run_time}###########################" >> ${log_dir}/daccount.log
+            ${bin_dir}/remote_da.exp $ip $sshport $generaluser "$generalpwd" "$rootpwd" "$duser" &>> ${log_dir}/daccount.log && grep -v "$duser $dhost" account.list > account.new;mv account.new account.list && echo "Dest: the user $duser@$dhost is deleted." || echo "Dest: $duser@$dhost appears that some error occurred, please check the logs/daccount.log."
+        done
+    fi
+}
+
+function cleanup()
+{
+    gzexe ${host_list} &> /dev/null
+    rm -rf ${data_dir}/host.list~
+}
+
+function main()
+{
+    if [ $# -eq 0 ];then
+        cleanup
+        echo 'Unkown argument, please input "-h" to get help.'
+        exit 1
+    fi
+    arg_flag=$(echo ${1:0:1})
+    if [ ${arg_flag} != "-" ];then
+        cleanup
+        echo 'Unkown argument, please input "-h" to get help.'
+        exit 1
+    fi
+    while getopts "c:a:s:dh" arg
+    do
+        case $arg in
+            c)
+                create_relay_account $OPTARG
+                create_dest_account $OPTARG
+                cat ${data_dir}/account.list | sort > ${data_dir}/account.tmp
+                mv ${data_dir}/account.tmp ${data_dir}/account.list
+                ;;
+            a)
+                delete_relay_account $OPTARG
+                delete_a_dest_account $OPTARG
+                ;;
+            s)
+                delete_s_dest_account $OPTARG
+                ;;
+            d)
+                echo "Delete user account:"
+                ;;
+            h)
+                echo "***************Command options***************"
+                echo "-c: create account"
+                echo "-d: delete account"
+                echo "-s: the account of the machine"
+                echo "-a: the account of all machine"
+                echo "****************Usage example****************"
+                echo "$0 -c user1:host1"
+                echo "$0 -c user1,user2,user3:host1,host2,host3"
+                echo "$0 -d -a user1"
+                echo "$0 -d -s user1:host1"
+                ;;
+            ?)
+                cleanup
+                echo 'Unkown argument, please input "-h" to get help.'
+                exit 1
+                ;;
+        esac
+    done
+}
+
+main $@
+cleanup
