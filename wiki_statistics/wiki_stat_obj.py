@@ -15,11 +15,11 @@ class WikiCount(object):
     '''wiki产出统计'''
     date = datetime.datetime.now().date() - datetime.timedelta(days=1)
     conf = {
-        'host': 'smtp.xinrenxinshi.com',
+        'host': 'smtp.xxx.com',
         'port': 465,
-        'sender': 'robot@xinrenxinshi.com',
-        'password': '@imGeek0',
-        'receiver': 'wangwenxue@qijiayoudao.com'
+        'sender': 'sender@xxx.com',
+        'password': '123456',
+        'receiver': 'hispoem@xxx.com'
     }
 
     def db_conn(self):
@@ -27,7 +27,7 @@ class WikiCount(object):
         conn = MySQLdb.connect(
             host='localhost',
             port=3306,
-            user='saas',
+            user='root',
             passwd='123456',
             db='confluence',
             charset='utf8'
