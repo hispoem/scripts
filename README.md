@@ -1,2 +1,2 @@
-# shell
-some shell scripts
+# scripts
+some scripts
