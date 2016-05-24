@@ -1,2 +1,3 @@
-许多公司的wiki应该是confluence搭建的，
-基于confluence数据库，写此脚本，统计每日wiki产出。
+许多公司的wiki是confluence搭建的，
+这里我基于confluence数据库写此脚本（脚本中数据库和邮件需要配置），统计每日wiki产出。
+可以在wiki服务器部署，通过计划任务执行之，执行完后会发邮件给相应人员。
